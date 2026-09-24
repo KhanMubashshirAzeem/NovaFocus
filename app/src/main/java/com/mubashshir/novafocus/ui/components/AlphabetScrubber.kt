@@ -123,7 +123,6 @@ fun AlphabetScrubber(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(LauncherDimensions.ScrubberMaxBulge + LauncherDimensions.BubbleSize + 60.dp)
             .onSizeChanged { canvasSize = it },
         contentAlignment = Alignment.CenterEnd
     ) {

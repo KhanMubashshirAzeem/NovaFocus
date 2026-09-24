@@ -8,6 +8,8 @@ import com.mubashshir.novafocus.data.model.AppItem
 import com.mubashshir.novafocus.data.repository.AppsRepository
 import com.mubashshir.novafocus.data.repository.DefaultAppsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +17,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -33,12 +39,15 @@ class LauncherViewModel @JvmOverloads constructor(
     private val _hapticEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val hapticEvent: SharedFlow<Unit> = _hapticEvent.asSharedFlow()
 
+    private val searchQueryFlow = MutableStateFlow("")
+
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEE d MMM", Locale.getDefault())
 
     init {
         startClockUpdates()
         loadInstalledApps()
+        observeSearchQuery()
     }
 
     private fun startClockUpdates() {
@@ -57,6 +66,23 @@ class LauncherViewModel @JvmOverloads constructor(
                 }
                 delay(1000L)
             }
+        }
+    }
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private fun observeSearchQuery() {
+        viewModelScope.launch {
+            searchQueryFlow
+                .debounce { query ->
+                    // 0ms debounce for clearing, 300ms for typing
+                    if (query.isEmpty()) 0L else 300L
+                }
+                .distinctUntilChanged()
+                .flowOn(Dispatchers.Default)
+                .collectLatest { query ->
+                    val results = repository.searchApps(query)
+                    _uiState.update { it.copy(searchResults = results) }
+                }
         }
     }
 
@@ -116,23 +142,22 @@ class LauncherViewModel @JvmOverloads constructor(
     }
 
     fun setSearching(isSearching: Boolean) {
+        val initialResults = if (isSearching) repository.searchApps("") else emptyList()
         _uiState.update { current ->
             current.copy(
                 isSearching = isSearching,
                 searchQuery = if (!isSearching) "" else current.searchQuery,
-                searchResults = if (isSearching) repository.searchApps(current.searchQuery) else emptyList()
+                searchResults = initialResults
             )
+        }
+        if (isSearching) {
+            searchQueryFlow.value = ""
         }
     }
 
     fun onSearchQueryChanged(query: String) {
-        val results = repository.searchApps(query)
-        _uiState.update {
-            it.copy(
-                searchQuery = query,
-                searchResults = results
-            )
-        }
+        _uiState.update { it.copy(searchQuery = query) }
+        searchQueryFlow.value = query
     }
 
     fun launchApp(context: Context, app: AppItem): Boolean {

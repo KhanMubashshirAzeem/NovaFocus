@@ -1,9 +1,12 @@
 package com.mubashshir.novafocus.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,45 +36,58 @@ fun HomeScreen(
             .background(BackgroundDark)
             .statusBarsPadding()
     ) {
-        // Main Content Area
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (!uiState.isSearching && uiState.selectedLetter == null) {
-                        Modifier.pointerInput(Unit) {
-                            detectVerticalDragGestures { _, dragAmount ->
-                                if (dragAmount < -30f) {
-                                    viewModel.setSearching(true)
+        if (uiState.isSearching) {
+            // Full screen search overlay
+            SearchOverlay(
+                query = uiState.searchQuery,
+                onQueryChange = { viewModel.onSearchQueryChanged(it) },
+                results = uiState.searchResults,
+                onAppClick = { app -> viewModel.launchApp(context, app) },
+                onDismiss = { viewModel.setSearching(false) },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Left 70% width: Content Area (Favorites / Filtered Alphabet list)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.70f)
+                    .align(Alignment.CenterStart)
+                    .then(
+                        if (uiState.selectedLetter == null) {
+                            // Detect swipe from bottom to up to open search
+                            Modifier.pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var triggered = false
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+
+                                        val deltaY = change.position.y - down.position.y
+                                        if (deltaY < -35f && !triggered) {
+                                            triggered = true
+                                            change.consume()
+                                            viewModel.setSearching(true)
+                                            break
+                                        }
+                                    }
                                 }
                             }
+                        } else {
+                            Modifier
                         }
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
-            when {
-                uiState.isSearching -> {
-                    SearchOverlay(
-                        query = uiState.searchQuery,
-                        onQueryChange = { viewModel.onSearchQueryChanged(it) },
-                        results = uiState.searchResults,
-                        onAppClick = { app -> viewModel.launchApp(context, app) },
-                        onDismiss = { viewModel.setSearching(false) }
                     )
-                }
-
-                uiState.selectedLetter != null -> {
+            ) {
+                if (uiState.selectedLetter != null) {
                     FilteredAppsSection(
                         letter = uiState.selectedLetter!!,
                         apps = uiState.filteredApps,
                         onAppClick = { app -> viewModel.launchApp(context, app) },
                         onBackToHome = { viewModel.returnToHome() }
                     )
-                }
-
-                else -> {
+                } else {
                     FavoritesSection(
                         time = uiState.currentTime,
                         date = uiState.currentDate,
@@ -80,10 +96,8 @@ fun HomeScreen(
                     )
                 }
             }
-        }
 
-        // Pinned Alphabet Scrubber on the Right Edge (hidden during search)
-        if (!uiState.isSearching) {
+            // Right 30% width: Dedicated Alphabet Scrubber Area
             AlphabetScrubber(
                 selectedLetter = uiState.selectedLetter,
                 onLetterSelected = { letter ->
@@ -92,7 +106,10 @@ fun HomeScreen(
                 onRelease = {
                     viewModel.onScrubberReleased()
                 },
-                modifier = Modifier.align(Alignment.CenterEnd)
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.30f)
+                    .align(Alignment.CenterEnd)
             )
         }
     }
