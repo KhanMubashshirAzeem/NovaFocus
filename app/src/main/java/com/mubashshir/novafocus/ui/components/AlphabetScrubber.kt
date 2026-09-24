@@ -11,13 +11,13 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -28,14 +28,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.mubashshir.novafocus.data.model.ScrubberItem
 import com.mubashshir.novafocus.domain.ScrubberMath
@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AlphabetScrubber(
-    activeLetter: Char?,
+    selectedLetter: Char?,
     onLetterSelected: (Char?) -> Unit,
     onRelease: () -> Unit,
     modifier: Modifier = Modifier
@@ -64,11 +64,11 @@ fun AlphabetScrubber(
     val bubbleFontSizePx = with(density) { LauncherDimensions.BubbleFontSize.toPx() }
     val marginEndPx = with(density) { LauncherDimensions.ScrubberMarginEnd.toPx() }
 
-    // Spring animatable for horizontal bulge amplitude
     val bulgeAnimatable = remember { Animatable(0f) }
     var touchY by remember { mutableFloatStateOf(0f) }
     var isTouching by remember { mutableStateOf(false) }
-    var lastSelectedIndex by remember { mutableIntStateOf(-1) }
+    var currentBubbleSymbol by remember { mutableStateOf<String?>(null) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
     val vibrator = remember(context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -111,69 +111,88 @@ fun AlphabetScrubber(
         }
     }
 
+    fun getItemCenterYs(height: Float): List<Float> {
+        val verticalPadding = height * 0.08f
+        val availableHeight = height - (verticalPadding * 2f)
+        val slotHeight = availableHeight / items.size
+        return items.indices.map { i ->
+            verticalPadding + (i + 0.5f) * slotHeight
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .width(LauncherDimensions.ScrubberMaxBulge + LauncherDimensions.BubbleSize + 60.dp),
+            .width(LauncherDimensions.ScrubberMaxBulge + LauncherDimensions.BubbleSize + 60.dp)
+            .onSizeChanged { canvasSize = it },
         contentAlignment = Alignment.CenterEnd
     ) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            isTouching = true
-                            touchY = offset.y
-                            coroutineScope.launch {
-                                bulgeAnimatable.animateTo(
-                                    targetValue = maxBulgePx,
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMedium
-                                    )
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        isTouching = true
+                        touchY = down.position.y
+
+                        coroutineScope.launch {
+                            bulgeAnimatable.animateTo(
+                                targetValue = maxBulgePx,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessMedium
                                 )
+                            )
+                        }
+
+                        val height = size.height.toFloat()
+                        val itemCenterYs = getItemCenterYs(height)
+                        var lastIdx = ScrubberMath.resolveClosestItemIndex(down.position.y, itemCenterYs)
+                        if (lastIdx != -1) {
+                            val item = items[lastIdx]
+                            currentBubbleSymbol = item.symbol
+                            onLetterSelected(item.letterChar)
+                            triggerHaptic()
+                        }
+
+                        val pointerId = down.id
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                            if (!change.pressed) {
+                                break
                             }
-                        },
-                        onDrag = { change, _ ->
                             change.consume()
                             touchY = change.position.y
-                        },
-                        onDragEnd = {
-                            isTouching = false
-                            lastSelectedIndex = -1
-                            onRelease()
-                            coroutineScope.launch {
-                                bulgeAnimatable.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.52f, // Organic spring overshoot
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                )
-                            }
-                        },
-                        onDragCancel = {
-                            isTouching = false
-                            lastSelectedIndex = -1
-                            onRelease()
-                            coroutineScope.launch {
-                                bulgeAnimatable.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.52f,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                )
+                            val newIdx = ScrubberMath.resolveClosestItemIndex(touchY, itemCenterYs)
+                            if (newIdx != -1 && newIdx != lastIdx) {
+                                lastIdx = newIdx
+                                val item = items[newIdx]
+                                currentBubbleSymbol = item.symbol
+                                onLetterSelected(item.letterChar)
+                                triggerHaptic()
                             }
                         }
-                    )
+
+                        // Finger lifted
+                        isTouching = false
+                        onRelease()
+                        coroutineScope.launch {
+                            bulgeAnimatable.animateTo(
+                                targetValue = 0f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.52f, // Organic spring overshoot
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        }
+                    }
                 }
         ) {
             val width = size.width
             val height = size.height
 
-            // Calculate vertical center and spacing for each item
             val verticalPadding = height * 0.08f
             val availableHeight = height - (verticalPadding * 2f)
             val slotHeight = availableHeight / items.size
@@ -182,17 +201,6 @@ fun AlphabetScrubber(
             val currentBulge = bulgeAnimatable.value
             val itemCenterYs = items.indices.map { i ->
                 verticalPadding + (i + 0.5f) * slotHeight
-            }
-
-            // Determine closest item when touching
-            if (isTouching) {
-                val closestIdx = ScrubberMath.resolveClosestItemIndex(touchY, itemCenterYs)
-                if (closestIdx != -1 && closestIdx != lastSelectedIndex) {
-                    lastSelectedIndex = closestIdx
-                    val selectedItem = items[closestIdx]
-                    onLetterSelected(selectedItem.letterChar)
-                    triggerHaptic()
-                }
             }
 
             // Draw each scrubber item along the dynamic Gaussian curve
@@ -211,8 +219,17 @@ fun AlphabetScrubber(
 
                 itemPaint.textSize = scrubberFontSizePx * scale
 
-                // Highlight letters closer to the touch point
-                if (displacement > maxBulgePx * 0.5f) {
+                // Highlight rule:
+                // During active drag: highlight letters near finger peak displacement
+                // In resting state: highlight the currently active letter (or star if on home)
+                val isHighlighted = if (currentBulge > maxBulgePx * 0.2f) {
+                    displacement > maxBulgePx * 0.45f
+                } else {
+                    (selectedLetter == null && item is ScrubberItem.Star) ||
+                            (selectedLetter != null && item.letterChar == selectedLetter)
+                }
+
+                if (isHighlighted) {
                     itemPaint.color = android.graphics.Color.WHITE
                     itemPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 } else {
@@ -231,7 +248,8 @@ fun AlphabetScrubber(
             }
 
             // Draw the enlarged Letter Bubble next to the finger when scrubbing
-            if (currentBulge > 5f && activeLetter != null) {
+            val displaySymbol = currentBubbleSymbol ?: selectedLetter?.toString()
+            if (currentBulge > 5f && displaySymbol != null) {
                 val progress = (currentBulge / maxBulgePx).coerceIn(0f, 1f)
                 val bubbleCenterX = baseX - currentBulge - bubbleRadiusPx - bubbleDistanceOffsetPx
                 val bubbleCenterY = touchY.coerceIn(
@@ -254,13 +272,13 @@ fun AlphabetScrubber(
                     style = Stroke(width = 1.5.dp.toPx())
                 )
 
-                // Letter inside bubble
+                // Symbol inside bubble
                 bubbleTextPaint.textSize = bubbleFontSizePx
                 bubbleTextPaint.alpha = (255 * progress).toInt()
                 val bubbleBaselineY = bubbleCenterY - ((bubbleTextPaint.descent() + bubbleTextPaint.ascent()) / 2f)
 
                 drawContext.canvas.nativeCanvas.drawText(
-                    activeLetter.toString(),
+                    displaySymbol,
                     bubbleCenterX,
                     bubbleBaselineY,
                     bubbleTextPaint

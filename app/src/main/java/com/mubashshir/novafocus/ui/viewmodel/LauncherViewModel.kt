@@ -78,8 +78,8 @@ class LauncherViewModel @JvmOverloads constructor(
     }
 
     fun onScrubberItemChanged(letter: Char?) {
-        val currentLetter = _uiState.value.activeScrubberLetter
-        if (currentLetter != letter) {
+        val currentLetter = _uiState.value.selectedLetter
+        if (currentLetter != letter || !_uiState.value.isScrubbing) {
             _hapticEvent.tryEmit(Unit)
             val filtered = if (letter != null) {
                 repository.getAppsStartingWith(letter)
@@ -88,7 +88,8 @@ class LauncherViewModel @JvmOverloads constructor(
             }
             _uiState.update {
                 it.copy(
-                    activeScrubberLetter = letter,
+                    selectedLetter = letter,
+                    isScrubbing = true,
                     filteredApps = filtered
                 )
             }
@@ -98,7 +99,17 @@ class LauncherViewModel @JvmOverloads constructor(
     fun onScrubberReleased() {
         _uiState.update {
             it.copy(
-                activeScrubberLetter = null,
+                isScrubbing = false
+                // Retain selectedLetter and filteredApps so the user stays on that alphabet
+            )
+        }
+    }
+
+    fun returnToHome() {
+        _uiState.update {
+            it.copy(
+                selectedLetter = null,
+                isScrubbing = false,
                 filteredApps = emptyList()
             )
         }

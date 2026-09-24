@@ -2,6 +2,7 @@ package com.mubashshir.novafocus
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -18,6 +19,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        onBackPressedDispatcher.addCallback(this) {
+            val state = viewModel.uiState.value
+            when {
+                state.isSearching -> viewModel.setSearching(false)
+                state.selectedLetter != null -> viewModel.returnToHome()
+                else -> moveTaskToBack(true)
+            }
+        }
 
         setContent {
             NovaFocusTheme {

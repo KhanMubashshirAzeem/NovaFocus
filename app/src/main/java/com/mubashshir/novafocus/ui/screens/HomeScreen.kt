@@ -1,7 +1,5 @@
 package com.mubashshir.novafocus.ui.screens
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -40,7 +38,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
-                    if (!uiState.isSearching && uiState.activeScrubberLetter == null) {
+                    if (!uiState.isSearching && uiState.selectedLetter == null) {
                         Modifier.pointerInput(Unit) {
                             detectVerticalDragGestures { _, dragAmount ->
                                 if (dragAmount < -30f) {
@@ -64,11 +62,12 @@ fun HomeScreen(
                     )
                 }
 
-                uiState.activeScrubberLetter != null -> {
+                uiState.selectedLetter != null -> {
                     FilteredAppsSection(
-                        letter = uiState.activeScrubberLetter!!,
+                        letter = uiState.selectedLetter!!,
                         apps = uiState.filteredApps,
-                        onAppClick = { app -> viewModel.launchApp(context, app) }
+                        onAppClick = { app -> viewModel.launchApp(context, app) },
+                        onBackToHome = { viewModel.returnToHome() }
                     )
                 }
 
@@ -86,7 +85,7 @@ fun HomeScreen(
         // Pinned Alphabet Scrubber on the Right Edge (hidden during search)
         if (!uiState.isSearching) {
             AlphabetScrubber(
-                activeLetter = uiState.activeScrubberLetter,
+                selectedLetter = uiState.selectedLetter,
                 onLetterSelected = { letter ->
                     viewModel.onScrubberItemChanged(letter)
                 },
