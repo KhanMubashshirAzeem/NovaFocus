@@ -130,3 +130,4 @@ com.mubashshir.novafocus/
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+# NovaFocus
