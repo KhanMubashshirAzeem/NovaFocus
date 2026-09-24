@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.mubashshir.novafocus.data.model.AppItem
 import com.mubashshir.novafocus.data.repository.AppsRepository
 import com.mubashshir.novafocus.data.repository.DefaultAppsRepository
+import com.mubashshir.novafocus.data.util.IconCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -63,6 +64,7 @@ class LauncherViewModel @JvmOverloads constructor(
     }
 
     private fun loadInitialFavorites(): List<AppItem> {
+        val context = getApplication<Application>().applicationContext
         val raw = prefs.getString("cached_favorite_apps", "") ?: ""
         if (raw.isNotBlank()) {
             val items = raw.split("\n").mapNotNull { line ->
@@ -71,13 +73,14 @@ class LauncherViewModel @JvmOverloads constructor(
                     val label = parts[0]
                     val pkgName = parts[1]
                     val actName = if (parts.size > 2) parts[2] else ""
+                    val cachedIcon = IconCache.getCachedIcon(context, pkgName)
                     AppItem(
                         id = "$pkgName/$actName",
                         label = label,
                         packageName = pkgName,
                         activityName = actName,
                         icon = null,
-                        iconBitmap = null
+                        iconBitmap = cachedIcon
                     )
                 } else null
             }
@@ -85,13 +88,13 @@ class LauncherViewModel @JvmOverloads constructor(
         }
         // Universal default favorite candidates so the Home screen is never blank on frame 0
         return listOf(
-            AppItem(id = "fav_whatsapp", label = "WhatsApp", packageName = "com.whatsapp", activityName = ""),
-            AppItem(id = "fav_chrome", label = "Chrome", packageName = "com.android.chrome", activityName = ""),
-            AppItem(id = "fav_camera", label = "Camera", packageName = "com.android.camera", activityName = ""),
-            AppItem(id = "fav_calculator", label = "Calculator", packageName = "com.google.android.calculator", activityName = ""),
-            AppItem(id = "fav_gmail", label = "Gmail", packageName = "com.google.android.gm", activityName = ""),
-            AppItem(id = "fav_youtube", label = "YouTube", packageName = "com.google.android.youtube", activityName = ""),
-            AppItem(id = "fav_maps", label = "Maps", packageName = "com.google.android.apps.maps", activityName = "")
+            AppItem(id = "fav_whatsapp", label = "WhatsApp", packageName = "com.whatsapp", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.whatsapp")),
+            AppItem(id = "fav_chrome", label = "Chrome", packageName = "com.android.chrome", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.android.chrome")),
+            AppItem(id = "fav_camera", label = "Camera", packageName = "com.android.camera", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.android.camera")),
+            AppItem(id = "fav_calculator", label = "Calculator", packageName = "com.google.android.calculator", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.google.android.calculator")),
+            AppItem(id = "fav_gmail", label = "Gmail", packageName = "com.google.android.gm", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.google.android.gm")),
+            AppItem(id = "fav_youtube", label = "YouTube", packageName = "com.google.android.youtube", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.google.android.youtube")),
+            AppItem(id = "fav_maps", label = "Maps", packageName = "com.google.android.apps.maps", activityName = "", iconBitmap = IconCache.getCachedIcon(context, "com.google.android.apps.maps"))
         )
     }
 

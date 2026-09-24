@@ -21,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import com.mubashshir.novafocus.ui.components.AlphabetScrubber
@@ -51,19 +52,20 @@ fun HomeScreen(
                 .fillMaxWidth(0.70f)
                 .align(Alignment.CenterStart)
                 .then(
-                    if (uiState.selectedLetter == null && !uiState.isSearching) {
+                    if (!uiState.isSearching) {
                         // Detect swipe from bottom to up to open search
                         Modifier.pointerInput(Unit) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 var triggered = false
                                 while (true) {
-                                    val event = awaitPointerEvent()
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                     if (!change.pressed) break
 
+                                    val deltaX = kotlin.math.abs(change.position.x - down.position.x)
                                     val deltaY = change.position.y - down.position.y
-                                    if (deltaY < -35f && !triggered) {
+                                    if (deltaY < -40f && -deltaY > deltaX * 1.2f && !triggered) {
                                         triggered = true
                                         change.consume()
                                         viewModel.setSearching(true)

@@ -1,5 +1,6 @@
 package com.mubashshir.novafocus.data.repository
 
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.mubashshir.novafocus.data.model.AppItem
+import com.mubashshir.novafocus.data.util.IconCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -90,7 +92,7 @@ class DefaultAppsRepository : AppsRepository {
                 .distinctBy { it.activityInfo.packageName }
                 .map { info ->
                     val pkgName = info.activityInfo.packageName
-                    favoritesMap[pkgName] ?: resolveAppItem(pm, info)
+                    favoritesMap[pkgName] ?: resolveAppItem(context, pm, info)
                 }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
 
@@ -156,7 +158,7 @@ class DefaultAppsRepository : AppsRepository {
 
             // Convert ONLY these 5-7 apps to AppItem with their icons
             val favorites = matchedInfos.map { info ->
-                resolveAppItem(pm, info)
+                resolveAppItem(context, pm, info)
             }
 
             cachedFavorites = favorites
@@ -194,16 +196,34 @@ class DefaultAppsRepository : AppsRepository {
         return matchedFavorites
     }
 
-    private fun resolveAppItem(pm: PackageManager, info: android.content.pm.ResolveInfo): AppItem {
+    private fun resolveAppItem(context: Context, pm: PackageManager, info: android.content.pm.ResolveInfo): AppItem {
         val label = info.loadLabel(pm)?.toString()?.trim() ?: info.activityInfo.name
         val pkgName = info.activityInfo.packageName
         val actName = info.activityInfo.name
+
+        // Check if cached on disk for 0ms load
+        val cachedImage = IconCache.getCachedIcon(context, pkgName)
+        if (cachedImage != null) {
+            return AppItem(
+                id = "$pkgName/$actName",
+                label = label,
+                packageName = pkgName,
+                activityName = actName,
+                icon = null,
+                iconBitmap = cachedImage
+            )
+        }
+
         val icon = try {
             info.loadIcon(pm)
         } catch (_: Exception) {
             null
         }
-        val iconBitmap = icon?.let { drawableToImageBitmap(it) }
+        val bitmap = icon?.let { IconCache.drawableToBitmap(it) }
+        if (bitmap != null) {
+            IconCache.saveIcon(context, pkgName, bitmap)
+        }
+        val iconBitmap = bitmap?.asImageBitmap()
 
         return AppItem(
             id = "$pkgName/$actName",
@@ -235,16 +255,23 @@ class DefaultAppsRepository : AppsRepository {
     override fun launchApp(
         context: Context, app: AppItem
     ): Boolean {
+        val isActivity = context is Activity
         return try {
             val intent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
                 component = ComponentName(
                     app.packageName, app.activityName
                 )
-                flags =
-                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                if (!isActivity) {
+                    flags =
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                }
             }
-            context.startActivity(intent)
+            if (isActivity) {
+                (context as Activity).startActivityForResult(intent, 1001)
+            } else {
+                context.startActivity(intent)
+            }
             true
         } catch (_: Exception) {
             try {
@@ -253,8 +280,13 @@ class DefaultAppsRepository : AppsRepository {
                         app.packageName
                     )
                 if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(launchIntent)
+                    if (isActivity) {
+                        launchIntent.flags = launchIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK.inv()
+                        (context as Activity).startActivityForResult(launchIntent, 1001)
+                    } else {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                    }
                     true
                 } else {
                     false
