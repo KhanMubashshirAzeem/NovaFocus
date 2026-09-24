@@ -1,5 +1,7 @@
 package com.mubashshir.novafocus
 
+import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
@@ -16,6 +18,14 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: LauncherViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: Context) {
+        // Enforce dark UI mode for the entire activity context so soft keyboards (GBoard/IME) render in Dark Mode
+        val config = Configuration(newBase.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_YES
+        }
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -30,7 +40,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            NovaFocusTheme {
+            NovaFocusTheme(darkTheme = true) {
                 HomeScreen(
                     viewModel = viewModel,
                     modifier = Modifier.fillMaxSize()

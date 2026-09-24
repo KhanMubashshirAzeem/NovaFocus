@@ -33,7 +33,11 @@ class LauncherViewModel @JvmOverloads constructor(
     private val repository: AppsRepository = DefaultAppsRepository()
 ) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow(LauncherUiState())
+    private val prefs by lazy {
+        application.getSharedPreferences("novafocus_launcher_prefs", Context.MODE_PRIVATE)
+    }
+
+    private val _uiState = MutableStateFlow(LauncherUiState(recentSearches = loadRecentSearches()))
     val uiState: StateFlow<LauncherUiState> = _uiState.asStateFlow()
 
     private val _hapticEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -48,6 +52,27 @@ class LauncherViewModel @JvmOverloads constructor(
         startClockUpdates()
         loadInstalledApps()
         observeSearchQuery()
+    }
+
+    private fun loadRecentSearches(): List<String> {
+        val raw = prefs.getString("recent_searches", "") ?: ""
+        return if (raw.isBlank()) emptyList() else raw.split("\n").filter { it.isNotBlank() }.take(3)
+    }
+
+    fun addRecentSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        val current = _uiState.value.recentSearches.toMutableList()
+        current.remove(trimmed)
+        current.add(0, trimmed)
+        val updated = current.take(3)
+        prefs.edit().putString("recent_searches", updated.joinToString("\n")).apply()
+        _uiState.update { it.copy(recentSearches = updated) }
+    }
+
+    fun clearRecentSearches() {
+        prefs.edit().remove("recent_searches").apply()
+        _uiState.update { it.copy(recentSearches = emptyList()) }
     }
 
     private fun startClockUpdates() {
@@ -97,6 +122,7 @@ class LauncherViewModel @JvmOverloads constructor(
                 current.copy(
                     isLoading = false,
                     favoriteApps = favorites,
+                    allApps = apps,
                     searchResults = if (current.isSearching) repository.searchApps(current.searchQuery) else emptyList()
                 )
             }
@@ -160,7 +186,10 @@ class LauncherViewModel @JvmOverloads constructor(
         searchQueryFlow.value = query
     }
 
-    fun launchApp(context: Context, app: AppItem): Boolean {
+    fun launchApp(context: Context, app: AppItem, isFromSearch: Boolean = false): Boolean {
+        if (isFromSearch) {
+            addRecentSearch(app.label)
+        }
         return repository.launchApp(context, app)
     }
 }

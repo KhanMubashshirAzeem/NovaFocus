@@ -10,12 +10,14 @@ data class LauncherUiState(
     val currentTime: String = "",
     val currentDate: String = "",
     val favoriteApps: List<AppItem> = emptyList(),
+    val allApps: List<AppItem> = emptyList(),
     val selectedLetter: Char? = null,
     val isScrubbing: Boolean = false,
     val filteredApps: List<AppItem> = emptyList(),
     val isSearching: Boolean = false,
     val searchQuery: String = "",
-    val searchResults: List<AppItem> = emptyList()
+    val searchResults: List<AppItem> = emptyList(),
+    val recentSearches: List<String> = emptyList()
 ) {
     val isViewingLetter: Boolean
         get() = selectedLetter != null
