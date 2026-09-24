@@ -14,3 +14,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Private interview preparation & local personal notes
+INTERVIEW_NOTES.md
+*interview*
+*.private.md
+*.local.md

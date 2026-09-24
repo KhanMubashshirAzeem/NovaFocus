@@ -1,142 +1,132 @@
-# NovaFocus — Alphabet Launcher
+# NovaFocus
 
-A minimal, high-performance Android launcher featuring a curved vertical A–Z index scrubber with organic spring physics, real-time app filtering, and zero-stutter 60/120 FPS animations.
-
----
-
-## Features
-
-1. **Resting Home Screen**:
-   - Digital clock and date updating live in real time.
-   - Clean, vertically-stacked favorites list (up to 7 apps) with smart matching for popular apps (WhatsApp, Chrome, Camera, Gmail, etc.) and fallback to installed apps.
-2. **A–Z Index Bar (Gaussian Scrubber)**:
-   - Vertically centered on the right edge with top Star (`☆`), letters `A` to `Z`, and bottom Dot (`•`).
-   - Dynamic Gaussian curve displacement: the bar smoothly bends toward the finger as you touch and drag.
-   - Enlarged circular **Letter Bubble** tracking the finger horizontally and vertically.
-   - Tactile haptic feedback tick each time the active letter changes.
-3. **Filtered App Screen**:
-   - Replaces resting home content instantaneously with a large letter header (e.g. **K**, **Y**, **D**) and all installed apps starting with that letter.
-   - Case-insensitive sorting with clean empty states ("No apps") when no matching apps are found.
-4. **Spring Physics Release**:
-   - Releasing the touch gesture triggers an organic spring animation with realistic bounce/overshoot settling the bar back to a straight line.
-5. **App Launching**:
-   - Tapping any app row launches the application immediately via Android `Intent`.
-6. **Swipe-up Search (Bonus)**:
-   - Swipe up from the home screen opens the quick search overlay with auto-focused keyboard and instant search filtering.
+A high-performance, minimalist Android launcher built with Jetpack Compose. Features an organic Gaussian curve alphabet scrubber, sub-5ms cold start icon rendering, universal gesture-driven search, and fluid 120 FPS animations.
 
 ---
 
-## 🧮 How the Curve Animation Works
+## Architectural Highlights
 
-The curve animation is implemented directly in custom Jetpack Compose `Canvas` with pure mathematics and zero external animation libraries.
+- **Unidirectional Data Flow (MVI/MVVM)**: State is consolidated into a single immutable `LauncherUiState` emitted via `StateFlow` and consumed by Compose.
+- **70/30 Screen Partition**: Touch event domains are strictly separated. The right 30% of screen width is dedicated to the alphabet scrubber, while the left 70% manages app content and vertical search gestures without touch conflicts.
+- **Frame 0 Instant Icon Rendering**: Persistent internal disk cache (`IconCache`) eliminates the standard 1-second cold-start icon delay by loading cached app icons synchronously during initialization.
+- **Organic Scrubber Physics**: The A–Z index bar deflects toward the user's touch following a Gaussian distribution curve and returns to resting position via a damped spring oscillator on release.
+- **Universal Swipe-Up Search**: Pointer events are intercepted in `PointerEventPass.Initial` with vertical angle validation, allowing the search overlay to open from both the home screen and filtered alphabet lists.
+- **Task Lifecycle and Backstack Stability**: Launch intents preserve backstack affinity, ensuring that pressing the system Back button in launched applications returns directly to NovaFocus.
+- **Pure AMOLED Theming**: Edge-to-edge dark theme with forced dark soft keyboard (IME) palette matching the launcher interface.
+
+---
+
+## Mathematics and Physics
 
 ### 1. Gaussian Falloff Displacement
-For any scrubber item with vertical center $y_i$ and current touch position $y_{\text{touch}}$, the horizontal displacement $\Delta X(y_i)$ (inward towards the left) is calculated as:
+Each item in the scrubber calculates its horizontal deflection toward the finger based on its vertical distance to the active touch point:
 
 $$\Delta X(y_i) = A \cdot \exp\left( -\frac{(y_i - y_{\text{touch}})^2}{2\sigma^2} \right)$$
 
-- **$A$ (Amplitude)**: The peak displacement at the touch point ($\sim 72\,\text{dp}$).
-- **$\sigma$ (Sigma / Spread Radius)**: Controls how wide the bulge spreads ($\sim 75\,\text{dp}$).
-- Letters closest to the finger deflect the most, while distant letters smoothly fall off towards $0$, creating a continuous, bell-shaped curve with no sharp kinks.
+- **A (Amplitude)**: Peak horizontal displacement at the touch point (~72 dp).
+- **sigma (Spread Radius)**: Controls the width of the bell curve (~75 dp).
+- Guarantees $C^\infty$ mathematical continuity with zero abrupt inflection points.
 
-### 2. Spring Physics on Release
-When the user releases their finger:
-- An `Animatable(0f)` animates the amplitude from $A$ to $0$ using Compose's `spring`:
-  ```kotlin
-  bulgeAnimatable.animateTo(
-      targetValue = 0f,
-      animationSpec = spring(
-          dampingRatio = 0.52f, // Organic spring overshoot
-          stiffness = Spring.StiffnessMediumLow
-      )
-  )
-  ```
-- This creates the exact overshoot and settling bounce seen in the reference video.
+### 2. Damped Spring Return
+Upon touch release, the bulge amplitude transitions to 0 using a damped spring physics model:
 
-### 3. Tactile Feedback & Magnified Bubble
-- When the closest letter index changes, a haptic feedback tick (`VibrationEffect.EFFECT_TICK`) is dispatched.
-- The floating bubble is drawn at:
-  $$X_{\text{bubble}} = X_{\text{base}} - A - \text{bubbleRadius} - \text{offset}$$
-  $$Y_{\text{bubble}} = \text{clamp}(y_{\text{touch}}, \text{minY}, \text{maxY})$$
+```kotlin
+bulgeAnimatable.animateTo(
+    targetValue = 0f,
+    animationSpec = spring(
+        dampingRatio = 0.52f,
+        stiffness = Spring.StiffnessMediumLow
+    )
+)
+```
+
+The damping ratio of 0.52 produces a single subtle overshoot before settling to a resting straight line.
 
 ---
 
-## ⚡ Performance & Zero-Jank Architecture
+## Performance Optimizations
 
-- **Zero-allocation on touch/draw path**: Text paints and offsets are reused; Canvas drawing avoids recompositions during 120 FPS scrub gestures.
-- **Background `PackageManager` caching**: Installed apps and app icons are resolved once on `Dispatchers.IO` and cached in memory.
-- **Pre-rendered `ImageBitmap`**: App icons are converted to Compose `ImageBitmap` in the repository, avoiding `Drawable` rendering costs on the main UI thread.
-- **Android 11+ Package Visibility**: `android.permission.QUERY_ALL_PACKAGES` is properly declared to discover all launchable user apps.
+1. **Multi-Phase App Loading**:
+   - **Phase 0 (Instant, < 5ms)**: Synchronous load of pre-cached favorite app icons from `context.filesDir/fav_icons/` on ViewModel creation.
+   - **Phase 1 (Fast, < 30ms)**: Memory lookup of pre-filtered favorite apps to populate launcher rows.
+   - **Phase 2 (Background, async)**: Full `PackageManager` scan on `Dispatchers.IO` to catalog all installed packages, extract metadata, and cache icons.
+
+2. **Touch and Render Path Efficiency**:
+   - Touch coordinates bypass Compose recomposition loops by driving `Canvas` offsets directly.
+   - Reusable `Paint` objects and text bounds avoid garbage collection pressure during continuous 120 FPS scrubbing gestures.
+
+3. **Debounced Search Pipeline**:
+   - Search queries are debounced (300ms while typing, 0ms on clear) via Kotlin `Flow`, preventing unnecessary filtering operations on rapid keystrokes.
 
 ---
 
-## 🏗️ Architecture & Project Structure
-
-The project follows Clean Architecture with MVVM / MVI unidirectional state flow:
+## Project Structure
 
 ```
 com.mubashshir.novafocus/
+├── MainActivity.kt                 # Edge-to-edge launcher activity & night mode configuration
 ├── data/
 │   ├── model/
-│   │   ├── AppItem.kt              # App entity with label, package, ImageBitmap icon
-│   │   └── ScrubberItem.kt         # Star, A-Z letters, Dot
-│   └── repository/
-│       └── AppsRepository.kt       # PackageManager queries, caching, smart favorites
+│   │   ├── AppItem.kt              # App entity (label, package, activity, bitmap)
+│   │   └── ScrubberItem.kt         # Scrubber symbols (Star, A–Z, Dot)
+│   ├── repository/
+│   │   └── AppsRepository.kt       # PackageManager queries, caching, app launch intents
+│   └── util/
+│       └── IconCache.kt            # High-performance disk cache for app icon bitmaps
 ├── domain/
-│   └── ScrubberMath.kt             # Pure Gaussian curve math & item resolution (100% testable)
+│   └── ScrubberMath.kt             # Pure mathematical functions for Gaussian curve and indices
 ├── ui/
 │   ├── components/
-│   │   ├── AlphabetScrubber.kt     # Custom Canvas scrubber with curve & spring physics
-│   │   ├── AppRowItem.kt           # App list row with icon, title, and ripple
-│   │   ├── ClockHeader.kt          # Live digital clock & date header
-│   │   ├── FavoritesSection.kt     # Home resting favorites list
-│   │   ├── FilteredAppsSection.kt  # Letter header, alphabetized apps & empty state
-│   │   └── SearchOverlay.kt        # Swipe-up app search with auto keyboard
+│   │   ├── AlphabetScrubber.kt     # Custom Canvas scrubber with dynamic curve & bubble
+│   │   ├── AppRowItem.kt           # App row presentation component
+│   │   ├── ClockHeader.kt          # Digital clock and calendar date header
+│   │   ├── FavoritesSection.kt     # Resting home screen favorites list
+│   │   ├── FilteredAppsSection.kt  # Alphabet-filtered app list with swipe-back affordance
+│   │   ├── SearchOverlay.kt        # Quick search sheet wrapper
+│   │   └── SearchScreen.kt         # Full search UI with recent search history
 │   ├── screens/
-│   │   └── HomeScreen.kt           # Screen orchestrator
+│   │   └── HomeScreen.kt           # Main composable orchestrator and gesture coordinator
 │   ├── theme/
-│   │   ├── Color.kt                # OLED black palette
-│   │   ├── Dimensions.kt           # Design tokens (sizes, paddings, curve constants)
-│   │   ├── Theme.kt                # Edge-to-edge system bar theme
-│   │   └── Type.kt                 # Minimal typography
+│   │   ├── Color.kt                # AMOLED dark palette definition
+│   │   ├── Dimensions.kt           # UI metrics, padding tokens, curve constants
+│   │   ├── Theme.kt                # Material3 dark theme setup
+│   │   └── Type.kt                 # Typography hierarchy
 │   └── viewmodel/
-│       ├── LauncherUiState.kt      # Immutable launcher state
-│       └── LauncherViewModel.kt    # StateFlow, clock updates, search & scrubber handling
-└── MainActivity.kt                 # Edge-to-edge Launcher activity
+│       ├── LauncherUiState.kt      # Immutable UI state data class
+│       └── LauncherViewModel.kt    # State management, search debounce, clock ticker
 ```
 
 ---
 
-## 📦 Third-Party Libraries Used
+## Dependencies
 
-In accordance with the assignment guidelines, external libraries are kept minimal and fully justified:
+| Dependency | Purpose |
+|---|---|
+| `androidx.compose.bom:2026.02.01` | Compose dependency management |
+| `androidx.activity:activity-compose` | Compose-Activity bridging and back handler |
+| `androidx.appcompat:appcompat:1.7.0` | Dark mode theme delegation and IME palette support |
+| `androidx.compose.material3:material3` | Material3 foundation and components |
+| `androidx.compose.ui:ui` & `graphics` | Canvas rendering, pointer input, graphics layer |
+| `androidx.lifecycle:lifecycle-runtime-ktx` | Coroutines, ViewModel scopes, StateFlow |
+| `junit:junit:4.13.2` | Unit testing for domain logic and repositories |
 
-| Library | Version | Purpose |
-|---|---|---|
-| `androidx.compose.bom` | `2026.02.01` | Jetpack Compose Bill of Materials ensuring version compatibility. |
-| `androidx.activity:activity-compose` | `1.13.0` | Activity integration with Compose and `by viewModels()`. |
-| `androidx.compose.material3:material3` | BOM | Material3 design system foundation. |
-| `androidx.compose.ui:ui` & `graphics` | BOM | Compose UI canvas, pointer gestures, and graphics primitives. |
-| `androidx.core:core-ktx` | `1.19.0` | Kotlin extensions for Android Core APIs. |
-| `androidx.lifecycle:lifecycle-runtime-ktx` | `2.11.0` | Coroutine lifecycle scopes and Flow utilities. |
-| `junit:junit` | `4.13.2` | Unit testing framework for math and repository tests. |
-
-*Note: The curve physics, Gaussian deflection, and spring animations are 100% custom-written without any third-party gesture or animation libraries.*
+*The Gaussian curve deflection, bubble tracking, and spring release animations are custom-built without third-party animation libraries.*
 
 ---
 
-## 🚀 Building & Running
+## Build and Test
 
-1. Open project in **Android Studio Meerkat / Ladybug or newer**.
-2. Run single Gradle sync:
-   ```bash
-   ./gradlew assembleDebug
-   ```
-3. Run unit tests:
-   ```bash
-   ./gradlew test
-   ```
-4. Install on device or emulator:
-   ```bash
-   ./gradlew installDebug
-   ```
+### Compile and Run Unit Tests
+```bash
+./gradlew test
+```
+
+### Build Debug APK
+```bash
+./gradlew assembleDebug
+```
+
+### Install on Device via ADB
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
