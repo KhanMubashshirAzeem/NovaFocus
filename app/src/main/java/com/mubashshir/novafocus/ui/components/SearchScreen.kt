@@ -20,7 +20,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -62,8 +66,10 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val interactionSource = remember { MutableInteractionSource() }
+    val keyboardController =
+        LocalSoftwareKeyboardController.current
+    val interactionSource =
+        remember { MutableInteractionSource() }
 
     BackHandler {
         keyboardController?.hide()
@@ -94,19 +100,21 @@ fun SearchScreen(
                     .size(44.dp)
                     .clickable(
                         interactionSource = interactionSource,
-                        indication = ripple(bounded = false, radius = 22.dp, color = RippleOverlay),
+                        indication = ripple(
+                            bounded = false,
+                            radius = 22.dp,
+                            color = RippleOverlay
+                        ),
                         onClick = {
                             keyboardController?.hide()
                             onDismiss()
-                        }
-                    ),
-                contentAlignment = Alignment.Center
+                        }), contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "←",
-                    color = TextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Light
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowLeft,
+                    contentDescription = "Back",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -141,9 +149,10 @@ fun SearchScreen(
                             color = TextSecondary,
                             fontSize = 16.sp,
                             modifier = Modifier
-                                .clickable { onQueryChange("") }
-                                .padding(8.dp)
-                        )
+                                .clickable {
+                                    onQueryChange("")
+                                }
+                                .padding(8.dp))
                     }
                 },
                 keyboardOptions = KeyboardOptions(
@@ -154,8 +163,7 @@ fun SearchScreen(
                     onSearch = {
                         keyboardController?.hide()
                         results.firstOrNull()?.let(onAppClick)
-                    }
-                ),
+                    }),
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)
@@ -194,13 +202,16 @@ fun SearchScreen(
                                 color = TextSecondary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Normal,
-                                modifier = Modifier.clickable { onClearRecents() }
-                            )
+                                modifier = Modifier.clickable { onClearRecents() })
                         }
                     }
 
                     items(recentSearches.take(3)) { recentTerm ->
-                        val matchingApp = allApps.firstOrNull { it.label.equals(recentTerm, ignoreCase = true) }
+                        val matchingApp = allApps.firstOrNull {
+                            it.label.equals(
+                                recentTerm, ignoreCase = true
+                            )
+                        }
 
                         Row(
                             modifier = Modifier
@@ -217,8 +228,7 @@ fun SearchScreen(
                                     horizontal = LauncherDimensions.ScreenHorizontalPadding,
                                     vertical = 12.dp
                                 ),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                            verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "🕒",
                                 fontSize = 16.sp,
@@ -268,15 +278,12 @@ fun SearchScreen(
 
                 items(
                     items = results.ifEmpty { allApps },
-                    key = { it.id }
-                ) { app ->
+                    key = { it.id }) { app ->
                     AppRowItem(
-                        app = app,
-                        onClick = {
+                        app = app, onClick = {
                             keyboardController?.hide()
                             onAppClick(app)
-                        }
-                    )
+                        })
                 }
             } else {
                 // Active Search Results
@@ -300,15 +307,12 @@ fun SearchScreen(
                 } else {
                     items(
                         items = results,
-                        key = { it.id }
-                    ) { app ->
+                        key = { it.id }) { app ->
                         AppRowItem(
-                            app = app,
-                            onClick = {
+                            app = app, onClick = {
                                 keyboardController?.hide()
                                 onAppClick(app)
-                            }
-                        )
+                            })
                     }
                 }
             }

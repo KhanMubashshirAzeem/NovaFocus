@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -37,7 +38,12 @@ class LauncherViewModel @JvmOverloads constructor(
         application.getSharedPreferences("novafocus_launcher_prefs", Context.MODE_PRIVATE)
     }
 
-    private val _uiState = MutableStateFlow(LauncherUiState(recentSearches = loadRecentSearches()))
+    private val _uiState = MutableStateFlow(
+        LauncherUiState(
+            recentSearches = loadRecentSearches(),
+            favoriteApps = loadInitialFavorites()
+        )
+    )
     val uiState: StateFlow<LauncherUiState> = _uiState.asStateFlow()
 
     private val _hapticEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -48,10 +54,51 @@ class LauncherViewModel @JvmOverloads constructor(
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEE d MMM", Locale.getDefault())
 
+    private var loadAppsJob: Job? = null
+
     init {
         startClockUpdates()
         loadInstalledApps()
         observeSearchQuery()
+    }
+
+    private fun loadInitialFavorites(): List<AppItem> {
+        val raw = prefs.getString("cached_favorite_apps", "") ?: ""
+        if (raw.isNotBlank()) {
+            val items = raw.split("\n").mapNotNull { line ->
+                val parts = line.split(";")
+                if (parts.size >= 2) {
+                    val label = parts[0]
+                    val pkgName = parts[1]
+                    val actName = if (parts.size > 2) parts[2] else ""
+                    AppItem(
+                        id = "$pkgName/$actName",
+                        label = label,
+                        packageName = pkgName,
+                        activityName = actName,
+                        icon = null,
+                        iconBitmap = null
+                    )
+                } else null
+            }
+            if (items.isNotEmpty()) return items
+        }
+        // Universal default favorite candidates so the Home screen is never blank on frame 0
+        return listOf(
+            AppItem(id = "fav_whatsapp", label = "WhatsApp", packageName = "com.whatsapp", activityName = ""),
+            AppItem(id = "fav_chrome", label = "Chrome", packageName = "com.android.chrome", activityName = ""),
+            AppItem(id = "fav_camera", label = "Camera", packageName = "com.android.camera", activityName = ""),
+            AppItem(id = "fav_calculator", label = "Calculator", packageName = "com.google.android.calculator", activityName = ""),
+            AppItem(id = "fav_gmail", label = "Gmail", packageName = "com.google.android.gm", activityName = ""),
+            AppItem(id = "fav_youtube", label = "YouTube", packageName = "com.google.android.youtube", activityName = ""),
+            AppItem(id = "fav_maps", label = "Maps", packageName = "com.google.android.apps.maps", activityName = "")
+        )
+    }
+
+    private fun persistFavorites(favorites: List<AppItem>) {
+        if (favorites.isEmpty()) return
+        val raw = favorites.joinToString("\n") { "${it.label};${it.packageName};${it.activityName}" }
+        prefs.edit().putString("cached_favorite_apps", raw).apply()
     }
 
     private fun loadRecentSearches(): List<String> {
@@ -112,16 +159,28 @@ class LauncherViewModel @JvmOverloads constructor(
     }
 
     fun loadInstalledApps(forceReload: Boolean = false) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        if (loadAppsJob?.isActive == true && !forceReload) return
+
+        loadAppsJob = viewModelScope.launch {
             val context = getApplication<Application>().applicationContext
+
+            // Phase 1: Fast load smart favorites immediately (typically < 30ms)
+            val fastFavorites = repository.getFastFavorites(context)
+            if (fastFavorites.isNotEmpty()) {
+                persistFavorites(fastFavorites)
+                _uiState.update { current ->
+                    current.copy(favoriteApps = fastFavorites)
+                }
+            }
+
+            // Phase 2: Full scan in background for alphabet scrubber and search
             val apps = repository.getInstalledApps(context, forceReload)
-            val favorites = repository.getSmartFavorites(context)
+            val fullFavorites = repository.getSmartFavorites(context)
 
             _uiState.update { current ->
                 current.copy(
                     isLoading = false,
-                    favoriteApps = favorites,
+                    favoriteApps = if (fullFavorites.isNotEmpty()) fullFavorites else current.favoriteApps,
                     allApps = apps,
                     searchResults = if (current.isSearching) repository.searchApps(current.searchQuery) else emptyList()
                 )

@@ -4,7 +4,7 @@ A minimal, high-performance Android launcher featuring a curved vertical A–Z i
 
 ---
 
-## 📱 Features
+## Features
 
 1. **Resting Home Screen**:
    - Digital clock and date updating live in real time.
