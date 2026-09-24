@@ -33,4 +33,10 @@ class AppItemTest {
         assertNull(items.first().letterChar)
         assertNull(items.last().letterChar)
     }
+
+    @Test
+    fun `LauncherViewModel has single Application argument constructor for AndroidViewModelFactory`() {
+        val constructor = com.mubashshir.novafocus.ui.viewmodel.LauncherViewModel::class.java.getConstructor(android.app.Application::class.java)
+        org.junit.Assert.assertNotNull(constructor)
+    }
 }

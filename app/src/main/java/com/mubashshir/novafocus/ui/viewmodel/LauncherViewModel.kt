@@ -22,7 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class LauncherViewModel(
+class LauncherViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: AppsRepository = DefaultAppsRepository()
 ) : AndroidViewModel(application) {
