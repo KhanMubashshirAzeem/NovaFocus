@@ -16,7 +16,11 @@ NovaFocus is a high-performance, minimalist Android launcher built entirely with
 - **Build System**: Gradle Kotlin DSL (`build.gradle.kts`) with Compose BOM
 
 ---
+**[Watch Screen Recording](/assets/NOVA_DEMO.mp4)**
 
+**[Download APK](/assets/app-debug.apk)**
+
+---
 ## Core Features
 
 - **Interactive Alphabet Scrubber**: A vertical A–Z index bar on the right screen edge with dynamic touch deflection, magnified letter bubble, haptic feedback, and a spring return animation on release.
